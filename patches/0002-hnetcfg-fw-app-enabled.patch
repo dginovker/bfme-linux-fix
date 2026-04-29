@@ -1,0 +1,28 @@
+diff --git a/dlls/hnetcfg/apps.c b/dlls/hnetcfg/apps.c
+index 0000000..0000000 100644
+--- a/dlls/hnetcfg/apps.c
++++ b/dlls/hnetcfg/apps.c
+@@ -383,15 +383,18 @@ static HRESULT WINAPI fw_app_put_ProcessImageFileName(
+     return E_NOTIMPL;
+ }
+ 
++/* Report any application looked up via INetFwAuthorizedApplications::Item() as
++ * enabled in the firewall exception list. Returning VARIANT_FALSE here causes
++ * old games (e.g. EA SAGE-engine titles like Battle for Middle-earth) to show
++ * a "Firewall Detected — add this app to the exception list?" dialog when
++ * they try to use multiplayer, since they interpret FALSE as "not yet
++ * authorized". Reporting TRUE makes the check pass and avoids the prompt
++ * without affecting real firewall behavior (which we don't enforce anyway). */
+ static HRESULT WINAPI fw_app_get_Enabled(
+     INetFwAuthorizedApplication *iface,
+     VARIANT_BOOL *enabled )
+ {
+-    fw_app *This = impl_from_INetFwAuthorizedApplication( iface );
+-
+-    FIXME("%p, %p\n", This, enabled);
+-
+-    *enabled = VARIANT_FALSE;
++    *enabled = VARIANT_TRUE;
+     return S_OK;
+ }
+ 

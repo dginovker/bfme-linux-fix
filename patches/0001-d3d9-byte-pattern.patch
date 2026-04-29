@@ -1,0 +1,129 @@
+From 72869bc9cd6f08929796a99cf4db43e7aa6d6f92 Mon Sep 17 00:00:00 2001
+From: Dan Ginovker <danielginovker@gmail.com>
+Date: Tue, 28 Apr 2026 23:43:11 -0700
+Subject: [PATCH] d3d9: Add a byte pattern to keep MSVC-style overlay scanners
+ working.
+
+Several closed-source overlay/hook libraries locate the IDirect3DDevice9
+vtable by pattern-scanning d3d9.dll for the MSVC sequence
+"mov [esi], imm32 ; mov [esi+disp], reg ; mov [esi+disp], reg"
+(c7 06 ?? 89 86 ?? 89 86), dereference the imm32 to find the vtable, and
+hook vtable[16]/vtable[17] (Reset/Present) with Detours-style trampolines.
+
+MinGW GCC emits a different but equivalent sequence, so the pattern
+doesn't appear in Wine's d3d9.dll. Add a packed const struct that
+reproduces the pattern with the linker resolving &d3d9_device_vtbl into
+the imm32 slot. A new conformance test asserts the pattern remains
+present and points to a valid vtable.
+
+Signed-off-by: Dan Ginovker <danielginovker@gmail.com>
+---
+ dlls/d3d9/device.c       | 19 ++++++++++++++++
+ dlls/d3d9/tests/device.c | 47 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 66 insertions(+)
+
+diff --git a/dlls/d3d9/device.c b/dlls/d3d9/device.c
+index 20b7255f5..c11fb4685 100644
+--- a/dlls/d3d9/device.c
++++ b/dlls/d3d9/device.c
+@@ -4626,6 +4626,25 @@ static const struct IDirect3DDevice9ExVtbl d3d9_device_vtbl =
+     d3d9_device_GetDisplayModeEx,
+ };
+ 
++/* Compatibility marker for closed-source overlay/hook libraries that locate
++ * the IDirect3DDevice9 vtable by pattern-scanning d3d9.dll for the MSVC
++ * sequence "mov [esi], imm32 ; mov [esi+disp], reg ; mov [esi+disp], reg"
++ * (c7 06 ?? ?? ?? ?? 89 86 ?? ?? ?? ?? 89 86 ?? ?? ?? ??), and dereference
++ * the imm32. MinGW GCC emits a different but equivalent sequence, so the
++ * pattern doesn't appear naturally. Reproduce it here with the linker
++ * resolving &d3d9_device_vtbl into the imm32 slot. No Wine code references
++ * this symbol; it exists only for the visible byte pattern. */
++__attribute__((used, aligned(1)))
++const struct __attribute__((packed))
++{
++    unsigned char op_mov_to_this[2];
++    const struct IDirect3DDevice9ExVtbl *vtable_addr;
++    unsigned char op_mov_field_a[2];
++    unsigned int disp_a;
++    unsigned char op_mov_field_b[2];
++    unsigned int disp_b;
++} d3d9_overlay_scanner_marker = { {0xc7, 0x06}, &d3d9_device_vtbl, {0x89, 0x86}, 0, {0x89, 0x86}, 0 };
++
+ static inline struct d3d9_device *device_from_device_parent(struct wined3d_device_parent *device_parent)
+ {
+     return CONTAINING_RECORD(device_parent, struct d3d9_device, device_parent);
+diff --git a/dlls/d3d9/tests/device.c b/dlls/d3d9/tests/device.c
+index 9614a5b0a..f2c43eb5e 100644
+--- a/dlls/d3d9/tests/device.c
++++ b/dlls/d3d9/tests/device.c
+@@ -28,6 +28,7 @@
+ #include <initguid.h>
+ #include <d3d9on12.h>
+ #include <dxgi1_4.h>
++#include <psapi.h>
+ 
+ static HMODULE d3d9_handle = 0;
+ static HMODULE d3d12_handle = 0;
+@@ -15295,6 +15296,51 @@ out:
+     DestroyWindow(window);
+ }
+ 
++/* Asserts that d3d9_overlay_scanner_marker (see dlls/d3d9/device.c) survives
++ * future build / compiler changes, so overlay scanners that look for the
++ * MSVC vtable-init pattern keep working against Wine's d3d9.dll. */
++static void test_overlay_scanner_marker(void)
++{
++    HMODULE d3d9 = GetModuleHandleA("d3d9.dll");
++    MODULEINFO mi;
++    const unsigned char *base, *p;
++    size_t size;
++    UINT32 vtable_addr, present_fn, reset_fn;
++    BOOL found = FALSE;
++
++    ok(d3d9 != NULL, "d3d9.dll not loaded.\n");
++    if (!d3d9) return;
++
++    ok(GetModuleInformation(GetCurrentProcess(), d3d9, &mi, sizeof(mi)),
++       "GetModuleInformation failed: %lu\n", GetLastError());
++    base = (const unsigned char *)mi.lpBaseOfDll;
++    size = mi.SizeOfImage;
++
++    for (p = base; p + 14 <= base + size; p++)
++    {
++        if (p[0]  == 0xc7 && p[1]  == 0x06
++         && p[6]  == 0x89 && p[7]  == 0x86
++         && p[12] == 0x89 && p[13] == 0x86)
++        {
++            found = TRUE;
++            break;
++        }
++    }
++    ok(found, "MSVC-style vtable-init byte pattern not found in d3d9.dll.\n");
++    if (!found) return;
++
++    vtable_addr = *(const UINT32 *)(p + 2);
++    ok(vtable_addr >= (UINT_PTR)base && vtable_addr < (UINT_PTR)base + size,
++       "vtable address 0x%08x out of d3d9.dll range.\n", vtable_addr);
++
++    reset_fn   = ((const UINT32 *)(UINT_PTR)vtable_addr)[16];
++    present_fn = ((const UINT32 *)(UINT_PTR)vtable_addr)[17];
++    ok(reset_fn   >= (UINT_PTR)base && reset_fn   < (UINT_PTR)base + size,
++       "vtable[16] (Reset) 0x%08x out of d3d9.dll range.\n", reset_fn);
++    ok(present_fn >= (UINT_PTR)base && present_fn < (UINT_PTR)base + size,
++       "vtable[17] (Present) 0x%08x out of d3d9.dll range.\n", present_fn);
++}
++
+ START_TEST(device)
+ {
+     HMODULE d3d9_handle = GetModuleHandleA("d3d9.dll");
+@@ -15432,6 +15478,7 @@ START_TEST(device)
+     test_cursor_clipping();
+     test_window_position();
+     test_d3d9on12();
++    test_overlay_scanner_marker();
+ 
+     UnregisterClassA("d3d9_test_wc", GetModuleHandleA(NULL));
+ }
+-- 
+2.53.0
+
