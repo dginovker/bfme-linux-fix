@@ -34,6 +34,15 @@ fi
 # --- Build deps ---
 
 install_deps() {
+    local missing=()
+    for cmd in git make gcc i686-w64-mingw32-gcc x86_64-w64-mingw32-gcc flex bison; do
+        command -v "$cmd" >/dev/null || missing+=("$cmd")
+    done
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        green "Build deps already satisfied."
+        return 0
+    fi
+    blue "Missing build deps: ${missing[*]}. Installing..."
     if command -v pacman >/dev/null; then
         sudo pacman -S --needed --noconfirm git base-devel mingw-w64-gcc flex bison
     elif command -v apt-get >/dev/null; then
@@ -80,7 +89,7 @@ else
         || { tail -30 /tmp/bfme-configure.log >&2; die "configure failed — see /tmp/bfme-configure.log"; }
 
     blue "Building d3d9 and hnetcfg (this is the slow part)..."
-    make -j"$(nproc)" dlls/d3d9 dlls/hnetcfg >/tmp/bfme-build.log 2>&1 \
+    make -j"$(nproc)" dlls/d3d9/i386-windows/d3d9.dll dlls/hnetcfg/i386-windows/hnetcfg.dll >/tmp/bfme-build.log 2>&1 \
         || { tail -50 /tmp/bfme-build.log >&2; die "make failed — see /tmp/bfme-build.log"; }
 
     [[ -f dlls/d3d9/i386-windows/d3d9.dll       ]] || die "d3d9.dll i386 not produced — check /tmp/bfme-build.log"
