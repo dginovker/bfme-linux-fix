@@ -59,6 +59,7 @@ WINEPREFIX=/path/to/prefix ./install.sh
 **Game is only taking up top-left portion of the screen**
 
 * Make sure your system has scale set to 100% and uses the same resolution in Options.ini as your display
+* Alternatively use `WINE_FULLSCREEN_FSR=1 wine ~/.wine/drive_c/users/$USER/AppData/Roaming/BFME\ Competetive\ Arena/BfmeFoundationProject_OnlineArena.exe `
 
 ## What this does
 
