@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/bfme-linux-fix"
-WINEPREFIX="${WINEPREFIX:-$HOME/.wine-bfme}"
+WINEPREFIX="${WINEPREFIX:-$HOME/.wine}"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }

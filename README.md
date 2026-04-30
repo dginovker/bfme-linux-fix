@@ -21,7 +21,7 @@ The script clones Wine source matching your installed Wine version, applies the 
 
 ```bash
 # 1. Install AIO Launcher and BFME 1 first
-WINEPREFIX=~/.wine-bfme wine ~/Downloads/AllInOneLauncherSetup.exe
+wine ~/Downloads/AllInOneLauncherSetup.exe
 # Then in the launcher: install BFME 1, click MULTIPLAYER once
 # (the first try will fail — that's expected; it extracts the files we need)
 
@@ -36,14 +36,14 @@ The script will prompt for `sudo` to:
 - copy the patched DLLs into Wine's system path (`/usr/lib/wine/i386-windows/`)
 - install `dotnet-sdk` if missing (needed to extract `dinput8.dll` from BFME's bundled resources)
 
-By default it targets `~/.wine-bfme`. Use a different prefix with:
+By default it targets your default Wine prefix (`~/.wine`). Use a different prefix with:
 ```bash
 WINEPREFIX=/path/to/prefix ./install.sh
 ```
 
 ## Then run BFME
 
-1. Open the AIO Launcher (or run the Arena directly): `WINEPREFIX=~/.wine-bfme wine "$HOME/.wine-bfme/drive_c/users/$USER/AppData/Roaming/BFME Competetive Arena/BfmeFoundationProject_OnlineArena.exe"`
+1. Open the AIO Launcher, or run the Arena directly: `wine "$HOME/.wine/drive_c/users/$USER/AppData/Roaming/BFME Competetive Arena/BfmeFoundationProject_OnlineArena.exe"`
 2. Log in
 3. Pick a game (BFME 1) → pick a patch (Patch 2.22) → CONTINUE on the sync dialog
 4. The Automated Matchmaking Test should pass within ~30 seconds and drop you into the Arena lobby
@@ -51,7 +51,7 @@ WINEPREFIX=/path/to/prefix ./install.sh
 ## Uninstall
 
 ```bash
-WINEPREFIX=~/.wine-bfme ./uninstall.sh
+./uninstall.sh
 ```
 
 (Restores the `*.bfme-orig` system DLL backups, removes the prefix `dinput8.dll`, and clears the dinput8 DllOverride.)
@@ -59,7 +59,7 @@ WINEPREFIX=~/.wine-bfme ./uninstall.sh
 ## Troubleshooting
 
 **"Your system failed the test — the overlay didn't load in 30 seconds"**
-- Confirm `~/.wine-bfme/drive_c/BFME1/dinput8.dll` exists (size ~300 KB)
+- Confirm `$WINEPREFIX/drive_c/BFME1/dinput8.dll` exists (size ~300 KB)
 - Confirm `/usr/lib/wine/i386-windows/d3d9.dll` is the 1.7 MB patched version (vanilla Wine ships ~240 KB)
 - Stop `ydotoold` if running — it can interfere with Wine's X11 input
 

@@ -2,7 +2,7 @@
 # uninstall.sh — revert install.sh's changes
 set -euo pipefail
 
-WINEPREFIX="${WINEPREFIX:-$HOME/.wine-bfme}"
+WINEPREFIX="${WINEPREFIX:-$HOME/.wine}"
 
 # Locate Wine's PE DLL dir (matching install.sh)
 WINE_PE_DIR=""
