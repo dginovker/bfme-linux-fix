@@ -1,4 +1,7 @@
-# BFME on Linux
+# BFME Competitive Arena on Linux
+
+<img width="2560" height="1600" alt="image" src="https://github.com/user-attachments/assets/f4004aeb-a5bb-4689-8264-7619bacf2d2e" />
+
 
 Get [Battle for Middle-earth's Online Battle Arena](https://bfmeladder.com/download) (Ladder mode) working on Linux.
 
