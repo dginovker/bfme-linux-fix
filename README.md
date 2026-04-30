@@ -10,7 +10,7 @@ The script clones Wine source matching your installed Wine version, applies the 
 
 ## Prerequisites
 
-- Linux on **X11** (Wayland breaks Wine's input handling for the Arena window)
+- Linux desktop (X11 or Wayland — both work; Wine apps run under Xwayland on Wayland sessions)
 - **wine** or **wine-staging** installed
 - A **Vulkan-capable GPU** (BFME's caps check fails on llvmpipe)
 - ~5 GB free disk

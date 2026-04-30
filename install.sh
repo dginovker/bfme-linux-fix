@@ -22,9 +22,8 @@ WINE_VERSION="$(printf '%s' "$WINE_VERSION_RAW" | grep -oE '[0-9]+\.[0-9]+(\.[0-
 [[ -n "$WINE_VERSION" ]] || die "couldn't parse wine version from: $WINE_VERSION_RAW"
 blue "Detected Wine $WINE_VERSION ($WINE_VERSION_RAW)"
 
-if [[ "${XDG_SESSION_TYPE:-}" != "x11" ]]; then
-    red "Warning: session type is '${XDG_SESSION_TYPE:-unknown}', not x11."
-    red "The Arena window needs X11 — Wayland is known to break Wine input."
+if [[ "${XDG_SESSION_TYPE:-}" != "x11" && "${XDG_SESSION_TYPE:-}" != "wayland" ]]; then
+    red "Warning: unrecognized session type '${XDG_SESSION_TYPE:-unknown}'. The Arena needs an X11 or Wayland (with Xwayland) desktop."
 fi
 
 if command -v vulkaninfo >/dev/null; then
