@@ -132,6 +132,32 @@ if [[ ! -d "$WINEPREFIX" ]]; then
     WINEPREFIX="$WINEPREFIX" wineboot --init >/dev/null 2>&1 || die "wineboot --init failed"
 fi
 
+# --- Install Microsoft core fonts (corefonts) ---
+# Without Tahoma/Arial/Segoe-UI fallbacks, WPF crashes on FontFamily.get_LineSpacing
+# the moment the Arena's password field tries to draw a caret blink:
+#   System.Environment.FailFast at FontFamily.get_FirstFontFamily()
+# winetricks corefonts pulls Microsoft's redistributable TTFs into the prefix.
+
+if [[ ! -f "$WINEPREFIX/drive_c/windows/Fonts/tahoma.ttf" && ! -f "$WINEPREFIX/drive_c/windows/Fonts/Tahoma.ttf" ]]; then
+    if ! command -v winetricks >/dev/null; then
+        blue "Installing winetricks..."
+        if command -v pacman >/dev/null; then
+            sudo pacman -S --needed --noconfirm winetricks
+        elif command -v apt-get >/dev/null; then
+            sudo apt-get install -y winetricks
+        elif command -v dnf >/dev/null; then
+            sudo dnf install -y winetricks
+        else
+            die "winetricks not installed and unknown distro"
+        fi
+    fi
+    blue "Installing core fonts via winetricks (one-time, ~30s)..."
+    WINEPREFIX="$WINEPREFIX" winetricks -q corefonts >/tmp/bfme-winetricks.log 2>&1 \
+        || { tail -30 /tmp/bfme-winetricks.log >&2; die "winetricks corefonts failed — see /tmp/bfme-winetricks.log"; }
+else
+    green "Core fonts already present in prefix."
+fi
+
 # --- Extract dinput8.dll from BfmeClient.dll resources, drop into C:\BFME1\ ---
 # The Arena's AddApiDllToGameDirectory is supposed to do this on launch, but
 # silently fails on Wine. Without dinput8.dll in BFME1, no overlay scanner runs

@@ -34,6 +34,7 @@ cd bfme-linux-fix
 The script will prompt for `sudo` to:
 - install build deps (`mingw-w64`, `base-devel`/`build-essential`, `flex`, `bison`) if missing
 - copy the patched DLLs into Wine's system path (`/usr/lib/wine/i386-windows/`)
+- install `winetricks` if missing (used to drop Microsoft core fonts into the prefix; without these, the Arena's WPF password field crashes when you click it)
 - install `dotnet-sdk` if missing (needed to extract `dinput8.dll` from BFME's bundled resources)
 
 By default it targets your default Wine prefix (`~/.wine`). Use a different prefix with:
@@ -62,6 +63,9 @@ WINEPREFIX=/path/to/prefix ./install.sh
 - Confirm `$WINEPREFIX/drive_c/BFME1/dinput8.dll` exists (size ~300 KB)
 - Confirm `/usr/lib/wine/i386-windows/d3d9.dll` is the 1.7 MB patched version (vanilla Wine ships ~240 KB)
 - Stop `ydotoold` if running — it can interfere with Wine's X11 input
+
+**Arena crashes the moment you click the password field** (`Process terminated. Unrecoverable system error.` → `FontFamily.get_FirstFontFamily()` in the log)
+The prefix is missing core fonts. Run `WINEPREFIX=~/.wine winetricks -q corefonts` (the install script does this for you, but if you set up the prefix yourself you may need to run it manually).
 
 **"BfmeFoundationProject.BfmeClient.dll not found in prefix"**
 You haven't launched the Arena yet. Open the AIO Launcher and click MULTIPLAYER once (the test will fail — that's fine), then re-run `./install.sh`.
