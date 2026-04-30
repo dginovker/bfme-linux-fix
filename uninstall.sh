@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
-# uninstall.sh — revert install.sh's changes to the Wine prefix
+# uninstall.sh — revert install.sh's changes
 set -euo pipefail
 
 WINEPREFIX="${WINEPREFIX:-$HOME/.wine-bfme}"
-SYSWOW64="$WINEPREFIX/drive_c/windows/syswow64"
 
-[[ -d "$SYSWOW64" ]] || { echo "no syswow64 at $SYSWOW64; nothing to do"; exit 0; }
-
-for dll in d3d9.dll hnetcfg.dll; do
-    if [[ -f "$SYSWOW64/$dll.bfme-orig" ]]; then
-        mv "$SYSWOW64/$dll.bfme-orig" "$SYSWOW64/$dll"
-        echo "Restored $SYSWOW64/$dll"
-    fi
+# Locate Wine's PE DLL dir (matching install.sh)
+WINE_PE_DIR=""
+for candidate in /usr/lib/wine/i386-windows /usr/lib32/wine/i386-windows /opt/wine-staging/lib/wine/i386-windows /usr/lib/x86_64-linux-gnu/wine/i386-windows; do
+    if [[ -d "$candidate" ]]; then WINE_PE_DIR="$candidate"; break; fi
 done
 
-for dll in d3d9 hnetcfg dinput8; do
-    WINEPREFIX="$WINEPREFIX" wine reg delete "HKCU\\Software\\Wine\\DllOverrides" /v "$dll" /f >/dev/null 2>&1 || true
-done
+if [[ -n "$WINE_PE_DIR" ]]; then
+    for dll in d3d9.dll hnetcfg.dll; do
+        if [[ -f "$WINE_PE_DIR/$dll.bfme-orig" ]]; then
+            sudo mv "$WINE_PE_DIR/$dll.bfme-orig" "$WINE_PE_DIR/$dll"
+            echo "Restored $WINE_PE_DIR/$dll"
+        fi
+    done
+fi
+
+if [[ -d "$WINEPREFIX" ]]; then
+    rm -f "$WINEPREFIX/drive_c/BFME1/dinput8.dll"
+    WINEPREFIX="$WINEPREFIX" wine reg delete "HKCU\\Software\\Wine\\DllOverrides" /v dinput8 /f >/dev/null 2>&1 || true
+fi
 
 echo "Done. Build cache at \${XDG_CACHE_HOME:-\$HOME/.cache}/bfme-linux-fix/ is untouched — delete it manually if you want to free disk."

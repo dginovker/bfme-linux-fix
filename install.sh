@@ -31,6 +31,18 @@ if command -v vulkaninfo >/dev/null; then
     vulkaninfo --summary >/dev/null 2>&1 || red "Warning: vulkaninfo failed. BFME's caps check needs a Vulkan-capable GPU; llvmpipe is too slow."
 fi
 
+# --- Locate Wine's PE DLL dir (system path) ---
+
+WINE_PE_DIR=""
+for candidate in /usr/lib/wine/i386-windows /usr/lib32/wine/i386-windows /opt/wine-staging/lib/wine/i386-windows /usr/lib/x86_64-linux-gnu/wine/i386-windows; do
+    if [[ -d "$candidate" && -f "$candidate/d3d9.dll" ]]; then
+        WINE_PE_DIR="$candidate"
+        break
+    fi
+done
+[[ -n "$WINE_PE_DIR" ]] || die "couldn't find Wine's i386-windows DLL dir. Tried: /usr/lib/wine/i386-windows, /usr/lib32/wine/i386-windows, /opt/wine-staging/lib/wine/i386-windows, /usr/lib/x86_64-linux-gnu/wine/i386-windows. Set WINE_PE_DIR= in env to override."
+blue "Wine PE DLL dir: $WINE_PE_DIR"
+
 # --- Build deps ---
 
 install_deps() {
@@ -55,7 +67,7 @@ install_deps() {
     fi
 }
 
-# --- Build ---
+# --- Build patched DLLs (cached by Wine version) ---
 
 BUILD_KEY="wine-${WINE_VERSION}-v1"
 BUILD_DIR="$CACHE_DIR/$BUILD_KEY"
@@ -101,34 +113,83 @@ else
     green "Built and cached at $BUILD_DIR"
 fi
 
-# --- Install into prefix ---
+# --- Install patched DLLs to system path (sudo) ---
+# Wine's loader detects "Wine builtin DLL" magic in our patched files and falls
+# back to the system path even when DllOverride says native,builtin. So we must
+# replace the system DLLs themselves. Backups go to <dll>.bfme-orig.
+
+blue "Installing patched DLLs to $WINE_PE_DIR (will prompt for sudo)..."
+for dll in d3d9.dll hnetcfg.dll; do
+    if [[ -f "$WINE_PE_DIR/$dll" && ! -f "$WINE_PE_DIR/$dll.bfme-orig" ]]; then
+        sudo cp "$WINE_PE_DIR/$dll" "$WINE_PE_DIR/$dll.bfme-orig"
+    fi
+    sudo cp "$BUILD_DIR/$dll" "$WINE_PE_DIR/$dll"
+done
+
+# --- Initialize prefix if missing ---
 
 if [[ ! -d "$WINEPREFIX" ]]; then
     blue "Initializing Wine prefix at $WINEPREFIX..."
     WINEPREFIX="$WINEPREFIX" wineboot --init >/dev/null 2>&1 || die "wineboot --init failed"
 fi
 
-SYSWOW64="$WINEPREFIX/drive_c/windows/syswow64"
-[[ -d "$SYSWOW64" ]] || die "syswow64 not found at $SYSWOW64 — is this a 64-bit prefix? (32-bit prefixes don't have syswow64; remove the prefix and rerun, or use a fresh location.)"
+# --- Extract dinput8.dll from BfmeClient.dll resources, drop into C:\BFME1\ ---
+# The Arena's AddApiDllToGameDirectory is supposed to do this on launch, but
+# silently fails on Wine. Without dinput8.dll in BFME1, no overlay scanner runs
+# at all and the matchmaking test will fail with "overlay didn't load".
 
-blue "Installing patched DLLs into $SYSWOW64..."
-for dll in d3d9.dll hnetcfg.dll; do
-    if [[ -f "$SYSWOW64/$dll" && ! -f "$SYSWOW64/$dll.bfme-orig" ]]; then
-        cp "$SYSWOW64/$dll" "$SYSWOW64/$dll.bfme-orig"
+BFME1_DIR="$WINEPREFIX/drive_c/BFME1"
+if [[ ! -d "$BFME1_DIR" ]]; then
+    red "C:\\BFME1 doesn't exist in this prefix yet."
+    red "Install BFME 1 via the AIO Launcher (see https://bfmeladder.com/download), then re-run this script."
+    exit 0
+fi
+
+BFME_CLIENT_DLL="$(find "$WINEPREFIX/drive_c/users" -name "BfmeFoundationProject.BfmeClient.dll" 2>/dev/null | head -1)"
+if [[ -z "$BFME_CLIENT_DLL" ]]; then
+    red "BfmeFoundationProject.BfmeClient.dll not found in prefix."
+    red "Open the AIO Launcher and click MULTIPLAYER once (or run the Arena standalone) so it extracts."
+    red "Then re-run this script."
+    exit 0
+fi
+blue "Found $BFME_CLIENT_DLL"
+
+# Need ilspycmd to extract the embedded dinput8.dll resource
+export PATH="$PATH:$HOME/.dotnet/tools"
+if ! command -v ilspycmd >/dev/null; then
+    if ! command -v dotnet >/dev/null; then
+        blue "Installing dotnet SDK..."
+        if command -v pacman >/dev/null; then
+            sudo pacman -S --needed --noconfirm dotnet-sdk
+        elif command -v apt-get >/dev/null; then
+            sudo apt-get install -y dotnet-sdk-9.0 || sudo apt-get install -y dotnet-sdk-8.0
+        elif command -v dnf >/dev/null; then
+            sudo dnf install -y dotnet-sdk-9.0 || sudo dnf install -y dotnet-sdk-8.0
+        else
+            die "dotnet not installed and unknown distro. Install dotnet-sdk manually."
+        fi
     fi
-    cp "$BUILD_DIR/$dll" "$SYSWOW64/$dll"
-done
+    blue "Installing ilspycmd..."
+    dotnet tool install --global ICSharpCode.Decompiler.Console >/dev/null 2>&1 || die "dotnet tool install ilspycmd failed"
+fi
 
-blue "Setting DLL overrides..."
-for dll in d3d9 hnetcfg dinput8; do
-    WINEPREFIX="$WINEPREFIX" wine reg add "HKCU\\Software\\Wine\\DllOverrides" \
-        /v "$dll" /d "native,builtin" /f >/dev/null 2>&1
-done
+EXTRACT_DIR="$(mktemp -d)"
+trap 'rm -rf "$EXTRACT_DIR"' EXIT
+blue "Extracting dinput8.dll from BfmeClient resources..."
+ilspycmd -p "$BFME_CLIENT_DLL" -o "$EXTRACT_DIR" >/dev/null 2>&1 || die "ilspycmd extraction failed"
+DINPUT8_RESOURCE="$(find "$EXTRACT_DIR" -name "*Resources.dinput8.dll" 2>/dev/null | head -1)"
+[[ -n "$DINPUT8_RESOURCE" ]] || die "Resources.dinput8.dll not found in extracted output"
+cp "$DINPUT8_RESOURCE" "$BFME1_DIR/dinput8.dll"
+green "Installed $BFME1_DIR/dinput8.dll"
+
+# --- Set DllOverride for dinput8 in this prefix ---
+blue "Setting dinput8 override (native,builtin)..."
+WINEPREFIX="$WINEPREFIX" wine reg add "HKCU\\Software\\Wine\\DllOverrides" \
+    /v dinput8 /d "native,builtin" /f >/dev/null 2>&1
 
 green ""
-green "Done. Wine prefix is ready at $WINEPREFIX."
+green "Done. Wine $WINE_VERSION patched, prefix $WINEPREFIX ready."
 echo
-echo "Next steps:"
-echo "  1. Download AllInOneLauncherSetup.exe from https://bfmeladder.com/download"
-echo "  2. WINEPREFIX=$WINEPREFIX wine ~/Downloads/AllInOneLauncherSetup.exe"
-echo "  3. Open the launcher, install BFME 1, then click MULTIPLAYER → log in → Patch 2.22 → CONTINUE"
+echo "Next: open the AIO Launcher (Multiplayer) or the Arena, log in,"
+echo "pick a patch (e.g. Patch 2.22), CONTINUE through the sync dialog."
+echo "The Automated Matchmaking Test should pass and drop you into the lobby."
